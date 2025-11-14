@@ -13,6 +13,12 @@ class Blockchain:
         self.current_transactions = []
         self.chain = []
         self.nodes = set()
+        
+        # Adaptive difficulty parameters
+        self.target_block_time = 300  # Target time between blocks in seconds
+        self.difficulty_adjustment_interval = 5  # Adjust difficulty every N blocks
+        self.initial_difficulty = 4  # Starting difficulty (number of leading zeros)
+        self.current_difficulty = self.initial_difficulty
 
         # Create the genesis block
         self.new_block(previous_hash='1', proof=100)
@@ -55,8 +61,9 @@ class Blockchain:
             if block['previous_hash'] != last_block_hash:
                 return False
 
-            # Check that the Proof of Work is correct
-            if not self.valid_proof(last_block['proof'], block['proof'], last_block_hash):
+            # Check that the Proof of Work is correct with adaptive difficulty
+            block_difficulty = block.get('difficulty', 4)  # Default to 4 for old blocks
+            if not self.valid_proof(last_block['proof'], block['proof'], last_block_hash, block_difficulty):
                 return False
 
             last_block = block
@@ -94,6 +101,7 @@ class Blockchain:
         # Replace our chain if we discovered a new, valid chain longer than ours
         if new_chain:
             self.chain = new_chain
+            self.recalculate_difficulty()  # Update difficulty after chain replacement
             return True
 
         return False
@@ -113,7 +121,12 @@ class Blockchain:
             'transactions': self.current_transactions,
             'proof': proof,
             'previous_hash': previous_hash or self.hash(self.chain[-1]),
+            'difficulty': self.current_difficulty,  # Store current difficulty
         }
+
+        # Adjust difficulty if needed (every N blocks)
+        if len(self.chain) > 0 and (len(self.chain) + 1) % self.difficulty_adjustment_interval == 0:
+            self.adjust_difficulty()
 
         # Reset the current list of transactions
         self.current_transactions = []
@@ -154,11 +167,60 @@ class Blockchain:
         block_string = json.dumps(block, sort_keys=True).encode()
         return hashlib.sha256(block_string).hexdigest()
 
+    def adjust_difficulty(self):
+        """
+        Adjust the mining difficulty based on the time taken to mine the last N blocks.
+        This implements Bitcoin-style difficulty adjustment.
+        """
+        if len(self.chain) < self.difficulty_adjustment_interval:
+            return
+
+        # Get the last N blocks
+        recent_blocks = self.chain[-self.difficulty_adjustment_interval:]
+        
+        # Calculate actual time taken
+        time_taken = recent_blocks[-1]['timestamp'] - recent_blocks[0]['timestamp']
+        
+        # Expected time for N blocks
+        expected_time = self.target_block_time * self.difficulty_adjustment_interval
+        
+        # Calculate the ratio
+        time_ratio = time_taken / expected_time
+        
+        print(f"\n=== Difficulty Adjustment ===")
+        print(f"Time taken: {time_taken:.2f}s")
+        print(f"Expected time: {expected_time:.2f}s")
+        print(f"Ratio: {time_ratio:.2f}")
+        print(f"Old difficulty: {self.current_difficulty}")
+        
+        # Adjust difficulty based on how fast/slow blocks were mined
+        if time_ratio < 0.5:  # More than 2x faster
+            self.current_difficulty += 2
+        elif time_ratio < 0.75:  # 25-50% faster
+            self.current_difficulty += 1
+        elif time_ratio > 2.0:  # More than 2x slower
+            self.current_difficulty = max(1, self.current_difficulty - 2)
+        elif time_ratio > 1.5:  # 50-100% slower
+            self.current_difficulty = max(1, self.current_difficulty - 1)
+        
+        # Ensure difficulty stays within reasonable bounds
+        self.current_difficulty = max(1, min(self.current_difficulty, 10))
+        
+        print(f"New difficulty: {self.current_difficulty}")
+        print("============================\n")
+
+    def recalculate_difficulty(self):
+        """
+        Recalculate difficulty when chain is replaced (after conflict resolution)
+        """
+        if len(self.chain) >= self.difficulty_adjustment_interval:
+            # Find the most recent difficulty from the chain
+            self.current_difficulty = self.last_block.get('difficulty', self.initial_difficulty)
+
     def proof_of_work(self, last_block):
         """
-        Simple Proof of Work Algorithm:
-
-         - Find a number p' such that hash(pp') contains leading 4 zeroes
+        Simple Proof of Work Algorithm with adaptive difficulty:
+         - Find a number p' such that hash(pp') contains leading zeros equal to current_difficulty
          - Where p is the previous proof, and p' is the new proof
          
         :param last_block: <dict> last Block
@@ -169,26 +231,27 @@ class Blockchain:
         last_hash = self.hash(last_block)
 
         proof = 0
-        while self.valid_proof(last_proof, proof, last_hash) is False:
+        while self.valid_proof(last_proof, proof, last_hash, self.current_difficulty) is False:
             proof += 1
 
         return proof
 
     @staticmethod
-    def valid_proof(last_proof, proof, last_hash):
+    def valid_proof(last_proof, proof, last_hash, difficulty=4):
         """
-        Validates the Proof
+        Validates the Proof with adaptive difficulty
 
         :param last_proof: <int> Previous Proof
         :param proof: <int> Current Proof
         :param last_hash: <str> The hash of the Previous Block
+        :param difficulty: <int> Number of leading zeros required
         :return: <bool> True if correct, False if not.
 
         """
 
         guess = f'{last_proof}{proof}{last_hash}'.encode()
         guess_hash = hashlib.sha256(guess).hexdigest()
-        return guess_hash[:4] == "0000"
+        return guess_hash[:difficulty] == "0" * difficulty
 
 
 # Instantiate the Node
@@ -225,6 +288,7 @@ def mine():
         'transactions': block['transactions'],
         'proof': block['proof'],
         'previous_hash': block['previous_hash'],
+        'difficulty': block['difficulty'],  # Show difficulty
     }
     return jsonify(response), 200
 
@@ -250,6 +314,34 @@ def full_chain():
     response = {
         'chain': blockchain.chain,
         'length': len(blockchain.chain),
+        'current_difficulty': blockchain.current_difficulty,  # Show current difficulty
+    }
+    return jsonify(response), 200
+
+
+@app.route('/difficulty', methods=['GET'])
+def get_difficulty():
+    """
+    Get current difficulty and mining statistics
+    """
+    if len(blockchain.chain) >= blockchain.difficulty_adjustment_interval:
+        recent_blocks = blockchain.chain[-blockchain.difficulty_adjustment_interval:]
+        time_taken = recent_blocks[-1]['timestamp'] - recent_blocks[0]['timestamp']
+        expected_time = blockchain.target_block_time * blockchain.difficulty_adjustment_interval
+        avg_block_time = time_taken / blockchain.difficulty_adjustment_interval
+    else:
+        avg_block_time = None
+        time_taken = None
+        expected_time = None
+    
+    response = {
+        'current_difficulty': blockchain.current_difficulty,
+        'target_block_time': blockchain.target_block_time,
+        'difficulty_adjustment_interval': blockchain.difficulty_adjustment_interval,
+        'blocks_until_adjustment': blockchain.difficulty_adjustment_interval - (len(blockchain.chain) % blockchain.difficulty_adjustment_interval),
+        'average_block_time': f"{avg_block_time:.2f}s" if avg_block_time else "N/A",
+        'expected_time_for_interval': f"{expected_time:.2f}s" if expected_time else "N/A",
+        'actual_time_for_interval': f"{time_taken:.2f}s" if time_taken else "N/A",
     }
     return jsonify(response), 200
 
