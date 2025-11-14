@@ -14,6 +14,10 @@ class Blockchain:
         self.chain = []
         self.nodes = set()
         
+        # Bitcoin supply parameters
+        self.max_supply = 100_000_000  # Maximum of 100 million coins
+        self.mining_reward = 1  # Reward per block
+        
         # Adaptive difficulty parameters
         self.target_block_time = 300  # Target time between blocks in seconds
         self.difficulty_adjustment_interval = 5  # Adjust difficulty every N blocks
@@ -217,6 +221,28 @@ class Blockchain:
             # Find the most recent difficulty from the chain
             self.current_difficulty = self.last_block.get('difficulty', self.initial_difficulty)
 
+    def get_total_supply(self):
+        """
+        Calculate the total coins currently in circulation
+        
+        :return: <int> Total supply
+        """
+        total = 0
+        for block in self.chain:
+            for transaction in block['transactions']:
+                if transaction['sender'] == "0":  # Mining reward
+                    total += transaction['amount']
+        return total
+
+    def can_mine(self):
+        """
+        Check if mining reward can be given without exceeding max supply
+        
+        :return: <bool> True if supply + reward <= max_supply
+        """
+        current_supply = self.get_total_supply()
+        return (current_supply + self.mining_reward) <= self.max_supply
+
     def proof_of_work(self, last_block):
         """
         Simple Proof of Work Algorithm with adaptive difficulty:
@@ -266,6 +292,15 @@ blockchain = Blockchain()
 
 @app.route('/mine', methods=['GET'])
 def mine():
+    # Check if we can still mine without exceeding max supply
+    if not blockchain.can_mine():
+        response = {
+            'message': "Mining stopped - maximum supply of 100,000,000 coins reached",
+            'current_supply': blockchain.get_total_supply(),
+            'max_supply': blockchain.max_supply,
+        }
+        return jsonify(response), 400
+    
     # We run the proof of work algorithm to get the next proof...
     last_block = blockchain.last_block
     proof = blockchain.proof_of_work(last_block)
@@ -275,7 +310,7 @@ def mine():
     blockchain.new_transaction(
         sender="0",
         recipient=node_identifier,
-        amount=1,
+        amount=blockchain.mining_reward,
     )
 
     # Forge the new Block by adding it to the chain
@@ -289,6 +324,7 @@ def mine():
         'proof': block['proof'],
         'previous_hash': block['previous_hash'],
         'difficulty': block['difficulty'],  # Show difficulty
+        'current_supply': blockchain.get_total_supply(),
     }
     return jsonify(response), 200
 
@@ -342,6 +378,24 @@ def get_difficulty():
         'average_block_time': f"{avg_block_time:.2f}s" if avg_block_time else "N/A",
         'expected_time_for_interval': f"{expected_time:.2f}s" if expected_time else "N/A",
         'actual_time_for_interval': f"{time_taken:.2f}s" if time_taken else "N/A",
+    }
+    return jsonify(response), 200
+
+
+@app.route('/supply', methods=['GET'])
+def get_supply():
+    """
+    Get current supply information
+    """
+    current_supply = blockchain.get_total_supply()
+    remaining_supply = blockchain.max_supply - current_supply
+    
+    response = {
+        'current_supply': current_supply,
+        'max_supply': blockchain.max_supply,
+        'remaining_supply': remaining_supply,
+        'supply_percentage': f"{(current_supply / blockchain.max_supply) * 100:.2f}%",
+        'mining_possible': blockchain.can_mine(),
     }
     return jsonify(response), 200
 
