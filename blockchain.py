@@ -1,5 +1,6 @@
 import hashlib
 import json
+import scrypt
 from time import time
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -162,14 +163,14 @@ class Blockchain:
     @staticmethod
     def hash(block):
         """
-        Creates a SHA-256 hash of a Block
+        Creates a scrypt hash of a Block
 
         :param block: Block
         """
 
         # We must make sure that the Dictionary is Ordered, or we'll have inconsistent hashes
         block_string = json.dumps(block, sort_keys=True).encode()
-        return hashlib.sha256(block_string).hexdigest()
+        return scrypt.hash(block_string, salt=b'blockchain_salt', N=1024, r=1, p=1, buflen=32).hex()
 
     def adjust_difficulty(self):
         """
@@ -276,7 +277,7 @@ class Blockchain:
         """
 
         guess = f'{last_proof}{proof}{last_hash}'.encode()
-        guess_hash = hashlib.sha256(guess).hexdigest()
+        guess_hash = scrypt.hash(guess, salt=b'blockchain_salt', N=1024, r=1, p=1, buflen=32).hex()
         return guess_hash[:difficulty] == "0" * difficulty
 
 
