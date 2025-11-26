@@ -2,7 +2,7 @@ import hashlib
 import json
 from unittest import TestCase
 
-from blockchain import Blockchain
+from backend.blockchain import Blockchain
 
 
 class BlockchainTestCase(TestCase):

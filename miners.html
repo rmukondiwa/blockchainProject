@@ -27,7 +27,7 @@ function startMining(name, speedId) {
   const speed = parseInt(document.getElementById(speedId).value);
 
   async function mine() {
-    const res = await fetch("http://localhost:5001/mine_with_rate", {
+    const res = await fetch("http://localhost:5001/api/mine_with_rate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ miner: name, hash_rate: speed })
