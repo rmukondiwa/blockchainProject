@@ -4,6 +4,7 @@ import scrypt
 from time import time
 from urllib.parse import urlparse
 from uuid import uuid4
+from flask_cors import CORS
 
 import requests
 from flask import Flask, jsonify, request
@@ -32,14 +33,14 @@ class Blockchain:
         """
         Add a new node to the list of nodes
 
-        :param address: Address of node. Eg. 'http://192.168.0.5:5000'
+        :param address: Address of node. Eg. 'http://192.168.0.5:5001'
         """
 
         parsed_url = urlparse(address)
         if parsed_url.netloc:
             self.nodes.add(parsed_url.netloc)
         elif parsed_url.path:
-            # Accepts an URL without scheme like '192.168.0.5:5000'.
+            # Accepts an URL without scheme like '192.168.0.5:5001'.
             self.nodes.add(parsed_url.path)
         else:
             raise ValueError('Invalid URL')
@@ -244,7 +245,7 @@ class Blockchain:
         current_supply = self.get_total_supply()
         return (current_supply + self.mining_reward) <= self.max_supply
 
-    def proof_of_work(self, last_block):
+    def proof_of_work(self, last_block, hash_rate=1):
         """
         Simple Proof of Work Algorithm with adaptive difficulty:
          - Find a number p' such that hash(pp') contains leading zeros equal to current_difficulty
@@ -258,8 +259,8 @@ class Blockchain:
         last_hash = self.hash(last_block)
 
         proof = 0
-        while self.valid_proof(last_proof, proof, last_hash, self.current_difficulty) is False:
-            proof += 1
+        while not self.valid_proof(last_proof, proof, last_hash, self.current_difficulty):
+            proof += hash_rate
 
         return proof
 
@@ -283,6 +284,7 @@ class Blockchain:
 
 # Instantiate the Node
 app = Flask(__name__)
+CORS(app)
 
 # Generate a globally unique address for this node
 node_identifier = str(uuid4()).replace('-', '')
@@ -436,12 +438,38 @@ def consensus():
 
     return jsonify(response), 200
 
+@app.route('/mine_with_rate', methods=['POST'])
+def mine_with_rate():
+    data = request.get_json()
+    miner = data.get("miner", "unknown")
+    hash_rate = data.get("hash_rate", 1)
+
+    if not blockchain.can_mine():
+        return jsonify({"message": "Max supply reached"}), 400
+
+    last_block = blockchain.last_block
+    
+    proof = blockchain.proof_of_work(last_block, hash_rate=hash_rate)
+
+    # mining reward
+    blockchain.new_transaction("0", miner, blockchain.mining_reward)
+
+    previous_hash = blockchain.hash(last_block)
+    block = blockchain.new_block(proof, previous_hash)
+
+    return jsonify({
+        "message": f"Block mined by {miner}",
+        "miner": miner,
+        "hash_rate": hash_rate,
+        "index": block['index'],
+        "difficulty": block['difficulty'],
+    })
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
-    parser.add_argument('-p', '--port', default=5000, type=int, help='port to listen on')
+    parser.add_argument('-p', '--port', default=5001, type=int, help='port to listen on')
     args = parser.parse_args()
     port = args.port
 

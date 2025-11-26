@@ -1,0 +1,49 @@
+<html>
+<body>
+  <h1>Miner Simulator</h1>
+
+  <div>
+    Miner A Speed:
+    <input id="speedA" type="number" value="1">
+    <button onclick="startMining('Miner A', 'speedA')">Start</button>
+  </div>
+
+  <div>
+    Miner B Speed:
+    <input id="speedB" type="number" value="5">
+    <button onclick="startMining('Miner B', 'speedB')">Start</button>
+  </div>
+
+  <div>
+    Miner C Speed:
+    <input id="speedC" type="number" value="20">
+    <button onclick="startMining('Miner C', 'speedC')">Start</button>
+  </div>
+
+  <pre id="log"></pre>
+
+<script>
+function startMining(name, speedId) {
+  const speed = parseInt(document.getElementById(speedId).value);
+
+  async function mine() {
+    const res = await fetch("http://localhost:5001/mine_with_rate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ miner: name, hash_rate: speed })
+    });
+
+    const data = await res.json();
+    document.getElementById("log").textContent += 
+      JSON.stringify(data, null, 2) + "\n";
+
+    // keep mining
+    setTimeout(mine, 10);
+  }
+
+  mine();
+}
+</script>
+
+</body>
+</html>
