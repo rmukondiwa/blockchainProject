@@ -1,46 +1,60 @@
-import axios from "axios";
 import { useEffect, useState } from "react";
 
 export default function BlockchainStats() {
-  const [stats, setStats] = useState<any>({});
+  const [stats, setStats] = useState<any>(null);
 
   useEffect(() => {
-    async function load() {
-      const supplyRes = await axios.get("/api/supply");
-      const diffRes = await axios.get("/api/difficulty");
-      const chainRes = await axios.get("/api/chain");
-
-      setStats({
-        difficulty: diffRes.data.data.current_difficulty,
-        chainLength: chainRes.data.data.length,
-        avgBlockTime: diffRes.data.data.average_block_time,
-        minersOnline: 5,
-        totalSupply: supplyRes.data.data.current_supply,
-        remainingSupply: supplyRes.data.data.remaining_supply,
-      });
+    function loadStats() {
+    fetch("http://127.0.0.1:5001/stats")   // <-- FIXED PORT
+      .then(res => res.json())
+      .then(data => {
+        setStats(data.data ?? data);
+      })
+      .catch(err => console.error("Failed to load blockchain stats:", err));
     }
-    load();
-  }, []);
 
-  const card = (title: string, value: any, color: string) => (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-3">
-      <div className="text-gray-300">{title}</div>
-      <div className={`text-3xl font-bold text-${color}-400`}>
-        {value}
+    loadStats(); // load immediately
+
+    const interval = setInterval(loadStats, 1000);
+    return () => clearInterval(interval); // cleanup on unmount  
+
+    }, []);
+
+  if (!stats) {
+    return (
+      <div className="bg-white/5 p-5 rounded-2xl border border-white/10">
+        <h2 className="text-xl font-semibold mb-3">Blockchain State</h2>
+        <p className="text-gray-400">Loading data...</p>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div>
-      <h2 className="text-xl mb-4 font-semibold">Blockchain State</h2>
+    <div className="bg-white/5 p-5 rounded-2xl border border-white/10 space-y-3">
+      <h2 className="text-xl font-semibold mb-3">Blockchain State</h2>
 
-      {card("Current Difficulty", stats.difficulty, "pink")}
-      {card("Chain Length", stats.chainLength, "cyan")}
-      {card("Avg Block Time (s)", stats.avgBlockTime, "green")}
-      {card("Miners Online", stats.minersOnline, "yellow")}
-      {card("Total Supply", stats.totalSupply, "red")}
-      {card("Remaining Supply", stats.remainingSupply, "blue")}
+      <Stat label="Current Difficulty" value={stats.difficulty} />
+      <Stat label="Chain Length" value={stats.chainLength} />
+      <Stat
+        label="Avg Block Time"
+        value={
+          stats.avgBlockTime !== null && stats.avgBlockTime !== undefined
+            ? stats.avgBlockTime + "s"
+            : "N/A"
+        }
+      />
+      <Stat label="Miners Online" value={stats.minersOnline} />
+      <Stat label="Total Supply" value={stats.totalSupply} />
+      <Stat label="Remaining Supply" value={stats.remainingSupply} />
+    </div>
+  );
+}
+
+function Stat({ label, value }: any) {
+  return (
+    <div className="bg-white/5 border border-white/10 p-4 rounded-xl">
+      <p className="text-gray-400 text-sm">{label}</p>
+      <p className="text-lg font-semibold text-white">{value ?? "…"} </p>
     </div>
   );
 }

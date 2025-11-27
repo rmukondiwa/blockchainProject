@@ -1,26 +1,48 @@
+import { useState } from "react";
 import BlockchainStats from "../components/BlockchainStats";
+import MinerControls from "../components/MinerControls";
 import MinerNetworkGraph from "../components/MinerNetworkGraph";
+import useMinerAutoMine from "../hooks/useMinerAutoMine";
 
 export default function Dashboard() {
+    const [miners, setMiners] = useState([]);
+
+    useMinerAutoMine(miners);
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0f24] to-[#111b44] text-white p-8">
-      <header className="mb-10">
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
+    <div className="w-full min-h-screen bg-gradient-to-br from-bgDark to-bgDeep text-white p-10">
+        <div className="max-w-[1500px] mx-auto">
+      {/* HEADER */}
+      <header className="mb-10 text-center">
+        <h1 className="text-5xl font-extrabold tracking-tight bg-gradient-to-r from-accentAqua to-accentPurple bg-clip-text text-transparent drop-shadow-glowPurple">
           Hylo - Blockchain Miner Network Simulation Dashboard
         </h1>
-        <p className="text-gray-400 mt-2 text-lg">
+        <p className="mt-3 text-gray-300 text-lg">
           Real-time distributed mining network visualization and analytics
         </p>
       </header>
+    
+      {/* MAIN GRID */}
+      <div className="grid grid-cols-3 gap-10">
 
-      <div className="grid grid-cols-3 gap-8">
-        <div className="col-span-2 bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-md">
-          <MinerNetworkGraph />
-        </div>
-
-        <div className="col-span-1 bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-md">
+        {/* LEFT SIDE — Miner Controls + Stats */}
+        <div className="col-span-1 space-y-8">
+          <MinerControls onMinerUpdate={setMiners} />
           <BlockchainStats />
         </div>
+        
+        {/* Graph Left */}
+        <div className="col-span-2 bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl shadow-xl shadow-black/40">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xl font-semibold">Network Topology</h2>
+            <div className="flex items-center gap-2 text-accentGreen">
+              <span className="w-3 h-3 bg-accentGreen rounded-full animate-pulse"></span>
+              {miners.length} Active Miners
+            </div>
+          </div>
+
+          <MinerNetworkGraph />
+        </div>
+      </div>
       </div>
     </div>
   );

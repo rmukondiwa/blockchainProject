@@ -1,7 +1,7 @@
+from time import time
 from uuid import uuid4
 from flask_cors import CORS
 from blockchain import Blockchain
-
 from flask import Flask, jsonify, request
 
 # Instantiate the Node
@@ -14,11 +14,19 @@ node_identifier = str(uuid4()).replace('-', '')
 # Instantiate the Blockchain
 blockchain = Blockchain()
 
+registered_miners = {}
+
 def success(data, code=200):
     return jsonify({"success": True, "data": data}), code
 
 def error(message, code=400):
     return jsonify({"success": False, "error": message}), code
+
+def api(data=None):
+    return jsonify({
+        "success": True,
+        "data": data
+    })
 
 @app.route('/api/mine', methods=['GET'])
 def mine():
@@ -28,7 +36,7 @@ def mine():
     last_block = blockchain.last_block
     proof = blockchain.proof_of_work(last_block)
 
-    blockchain.new_transaction("0", node_identifier, blockchain.mining_reward)
+    blockchain.new_transaction("0",node_identifier, blockchain.mining_reward)
     previous_hash = blockchain.hash(last_block)
     block = blockchain.new_block(proof, previous_hash)
 
@@ -84,6 +92,17 @@ def get_difficulty():
         'expected_time_for_interval': expected_time,
         'actual_time_for_interval': time_taken,
     })
+
+@app.route('/api/miners/delete', methods=['POST'])
+def delete_miner():
+    data = request.get_json()
+    miner_id = data.get("id")
+
+    if not miner_id or miner_id not in registered_miners:
+        return error("Miner not found", 400)
+
+    del registered_miners[miner_id]
+    return success({"message": "Miner removed"})
 
 @app.route('/api/supply', methods=['GET'])
 def get_supply():
@@ -151,6 +170,12 @@ def mine_with_rate():
     previous_hash = blockchain.hash(last_block)
     block = blockchain.new_block(proof, previous_hash)
 
+    # update miner registry
+    if miner in registered_miners:
+        registered_miners[miner]["blocks"] += 1
+        registered_miners[miner]["lastMined"] = time()
+
+
     return success({
         "message": f"Block mined by {miner}",
         "miner": miner,
@@ -158,6 +183,50 @@ def mine_with_rate():
         "block": block,
     })
 
+@app.route('/api/miners/add', methods=['POST'])
+def add_miner():
+    data = request.get_json()
+    miner_id = data.get("id")
+    hash_rate = data.get("hashRate", 1)
+
+    if not miner_id:
+        return error("Miner id required", 400)
+
+    registered_miners[miner_id] = {
+        "hashRate": hash_rate,
+        "blocks": 0
+    }
+
+    return success({"message": "Miner added", "miners": registered_miners})
+
+@app.route('/api/miners', methods=['GET'])
+def get_miners():
+    # merge registry + chain stats
+    miners = []
+
+    for miner, info in registered_miners.items():
+        miners.append({
+            "id": miner,
+            "hashRate": info["hashRate"],
+            "blocks": info["blocks"]
+        })
+
+    return success({"miners": miners})
+
+@app.get("/stats")
+def stats():
+    current_supply = blockchain.get_total_supply()
+    remaining_supply = blockchain.max_supply - current_supply
+
+    return success({
+        "difficulty": blockchain.current_difficulty,
+        "chainLength": len(blockchain.chain),
+        "avgBlockTime": None,  # you can wire real timing later
+        "minersOnline": len(registered_miners),
+        "totalSupply": current_supply,
+        "remainingSupply": remaining_supply,
+    })
+    
 # Running the server
 if __name__ == '__main__':
     from argparse import ArgumentParser
