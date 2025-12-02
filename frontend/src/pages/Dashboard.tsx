@@ -14,7 +14,7 @@ export default function Dashboard() {
       {/* HEADER */}
       <header className="mb-10 text-center">
         <h1 className="text-5xl font-extrabold tracking-tight bg-gradient-to-r from-accentAqua to-accentPurple bg-clip-text text-transparent drop-shadow-glowPurple">
-          Hylo - Blockchain Miner Network Simulation Dashboard
+          Hydro - Blockchain Miner Network Simulation Dashboard
         </h1>
         <p className="mt-3 text-gray-300 text-lg">
           Real-time distributed mining network visualization and analytics
@@ -26,7 +26,7 @@ export default function Dashboard() {
 
         {/* LEFT SIDE — Miner Controls + Stats */}
         <div className="col-span-1 space-y-8">
-          <MinerControls onMinerUpdate={setMiners} />
+          <MinerControls miners={miners} onMinerUpdate={setMiners} />
           <BlockchainStats />
         </div>
         

@@ -1,51 +1,95 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-export default function MinerControls({ onMinerUpdate }) {
-  const [miners, setMiners] = useState([]);
+export default function MinerControls({miners, onMinerUpdate }) {
   const [newMinerName, setNewMinerName] = useState("");
   const [newMinerRate, setNewMinerRate] = useState(1000);
+  const [isAdding, setIsAdding] = useState(false);
+  const [error, setError] = useState("");
+  const loadingRef = useRef(false);
 
-  // Fetch miners
-  async function loadMiners() {
-  fetch("http://127.0.0.1:5001/api/miners")
-    .then(res => res.json())
-    .then(data => {
+  // Fetch miners with debounce
+  const loadMiners = useCallback(async () => {
+    if (loadingRef.current) return;
+    
+    loadingRef.current = true;
+    try {
+      const res = await fetch("http://127.0.0.1:5001/api/miners");
+      const data = await res.json();
       const list = data.data.miners;
-      setMiners(list);        // <-- LOCAL STATE UPDATE (important)
-      onMinerUpdate(list);    // <-- PARENT DASHBOARD UPDATE
-    });
-}
+      console.log("Loaded miners:", list);
+      onMinerUpdate(list);
+    } catch (error) {
+      console.error("Failed to load miners:", error);
+      setError("Failed to connect to backend");
+    } finally {
+      loadingRef.current = false;
+    }
+  }, [onMinerUpdate]);
 
   useEffect(() => {
     loadMiners();
-    const interval = setInterval(loadMiners, 2000);
+    const interval = setInterval(loadMiners, 3000); // Increased to 3s to reduce conflicts
     return () => clearInterval(interval);
-  }, []);
+  }, [loadMiners]);
 
   async function addMiner() {
-    if (!newMinerName.trim()) return;
+    if (!newMinerName.trim()) {
+      setError("Miner name is required");
+      return;
+    }
+    
+    if (isAdding) return; // Prevent double-clicks
+    
+    setIsAdding(true);
+    setError("");
+    
+    try {
+      const response = await fetch("http://127.0.0.1:5001/api/miners/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: newMinerName.trim(),
+          hashRate: Number(newMinerRate) || 1000
+        })
+      });
 
-    await fetch("http://127.0.0.1:5001/api/miners/add", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: newMinerName,
-        hashRate: Number(newMinerRate)
-      })
-    });
+      const result = await response.json();
+      
+      if (!result.success) {
+        setError(result.error || "Failed to add miner");
+        console.error("Failed to add miner:", result);
+        return;
+      }
 
-    setNewMinerName("");
-    loadMiners();
+      console.log("Miner added successfully:", result);
+      
+      // Clear form
+      setNewMinerName("");
+      setNewMinerRate(1000);
+      
+      // Force immediate reload
+      await loadMiners();
+      
+    } catch (error) {
+      console.error("Failed to add miner:", error);
+      setError("Network error: Could not connect to backend");
+    } finally {
+      setTimeout(() => setIsAdding(false), 500);
+    }
   }
 
   async function deleteMiner(id) {
-    await fetch("http://127.0.0.1:5001/api/miners/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id })
-    });
+    try {
+      await fetch("http://127.0.0.1:5001/api/miners/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id })
+      });
 
-    loadMiners();
+      await loadMiners();
+    } catch (error) {
+      console.error("Failed to delete miner:", error);
+    }
   }
 
   return (
@@ -54,6 +98,13 @@ export default function MinerControls({ onMinerUpdate }) {
       <h2 className="text-2xl font-semibold mb-6 text-white flex items-center gap-2">
         ⚙️ Miner Controls
       </h2>
+
+      {/* Error Message */}
+      {error && (
+        <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-200 text-sm">
+          {error}
+        </div>
+      )}
 
       {/* Add Miner UI */}
       <div className="space-y-3">
@@ -74,9 +125,10 @@ export default function MinerControls({ onMinerUpdate }) {
 
         <button
           onClick={addMiner}
-          className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl font-semibold"
+          disabled={isAdding}
+          className={`w-full ${isAdding ? 'bg-gray-600' : 'bg-green-600 hover:bg-green-500'} text-white py-3 rounded-xl font-semibold transition-colors`}
         >
-          + Add Miner Node
+          {isAdding ? "Adding..." : "+ Add Miner Node"}
         </button>
       </div>
 
