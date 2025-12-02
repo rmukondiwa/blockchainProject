@@ -155,6 +155,14 @@ class Blockchain:
     @property
     def last_block(self):
         return self.chain[-1]
+    
+    @property
+    def total_supply(self):
+        return self.get_total_supply()
+
+    @property
+    def remaining_supply(self):
+        return self.max_supply - self.get_total_supply()
 
     @staticmethod
     def hash(block):
@@ -275,3 +283,18 @@ class Blockchain:
         guess = f'{last_proof}{proof}{last_hash}'.encode()
         guess_hash = scrypt.hash(guess, salt=b'blockchain_salt', N=1024, r=1, p=1, buflen=32).hex()
         return guess_hash[:difficulty] == "0" * difficulty
+    
+    def avg_block_time(self):
+        """
+        Compute the average block time across the whole chain.
+        """
+        if len(self.chain) < 2:
+            return 0  # Not enough blocks
+
+        timestamps = [block["timestamp"] for block in self.chain]
+        gaps = [
+            timestamps[i] - timestamps[i-1] 
+            for i in range(1, len(timestamps))
+        ]
+
+        return sum(gaps) / len(gaps)
